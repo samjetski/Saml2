@@ -3,9 +3,6 @@ using Sustainsys.Saml2.Exceptions;
 using Sustainsys.Saml2.Saml2P;
 using System;
 using System.Configuration;
-using System.IdentityModel.Metadata;
-using System.IdentityModel.Services;
-using System.IdentityModel.Tokens;
 using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -101,10 +98,7 @@ namespace Sustainsys.Saml2.WebSso
             Saml2Response samlResponse,
             StoredRequestState storedRequestState)
         {
-            var principal = new ClaimsPrincipal(samlResponse.GetClaims(options));
-
-            principal = options.SPOptions.SystemIdentityModelIdentityConfiguration
-                .ClaimsAuthenticationManager.Authenticate(null, principal);
+            var principal = new ClaimsPrincipal(samlResponse.GetClaims(options, storedRequestState?.RelayData));
 
             if(options.SPOptions.ReturnUrl == null)
             {

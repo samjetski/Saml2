@@ -21,7 +21,7 @@ namespace Sustainsys.Saml2.AspNetCore2
 
             if(commandResult.Location != null)
             {
-                httpContext.Response.Headers["Location"] = commandResult.Location.ToString();
+                httpContext.Response.Headers["Location"] = commandResult.Location.OriginalString;
             }
 
             if(!string.IsNullOrEmpty(commandResult.SetCookieName))
@@ -39,6 +39,11 @@ namespace Sustainsys.Saml2.AspNetCore2
                         // so the ASP.Net Core default of Lax is not appropriate in this case
                         SameSite = SameSiteMode.None
                     });
+            }
+
+            foreach(var h in commandResult.Headers)
+            {
+                httpContext.Response.Headers.Add(h.Key, h.Value);
             }
 
             if(!string.IsNullOrEmpty(commandResult.ClearCookieName))

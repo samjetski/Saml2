@@ -1,38 +1,38 @@
-﻿using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using FluentAssertions;
+﻿using FluentAssertions;
+using Microsoft.IdentityModel.Tokens.Saml2;
 using Microsoft.Owin;
-using Owin;
 using Microsoft.Owin.Security;
-using System.Collections.Generic;
-using System.Linq;
-using System.IO;
-using System.Text;
-using System.Security.Claims;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Owin;
 using Sustainsys.Saml2.Configuration;
-using System.Xml.Linq;
-using System.Threading.Tasks;
-using System.IdentityModel.Tokens;
-using System.IdentityModel.Metadata;
-using System.Reflection;
-using System.Threading;
+using Sustainsys.Saml2.Metadata;
 using Sustainsys.Saml2.Saml2P;
 using Sustainsys.Saml2.WebSso;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Security.Claims;
 using System.Security.Principal;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace Sustainsys.Saml2.Owin.Tests
 {
-    using Saml2.Exceptions;
-    using Sustainsys.Saml2.TestHelpers;
-    using Microsoft.Owin.Security.DataProtection;
-    using NSubstitute;
-    using System.Configuration;
-    using System.Net.Http;
-    using System.Security.Cryptography.Xml;
-    using System.Web;
-    using AuthenticateDelegate = Func<string[], Action<IIdentity, IDictionary<string, string>, IDictionary<string, object>, object>, object, Task>;
+	using Microsoft.Owin.Security.DataProtection;
+	using NSubstitute;
+	using Saml2.Exceptions;
+	using Sustainsys.Saml2.TestHelpers;
+	using System.Configuration;
+	using System.Net.Http;
+	using System.Security.Cryptography.Xml;
+	using System.Web;
+	using AuthenticateDelegate = Func<string[], Action<IIdentity, IDictionary<string, string>, IDictionary<string, object>, object>, object, Task>;
 
-    [TestClass]
+	[TestClass]
     public class Saml2AuthenticationMiddlewareTests
     {
         ClaimsPrincipal originalPrincipal;
@@ -56,7 +56,7 @@ namespace Sustainsys.Saml2.Owin.Tests
                 new StubOwinMiddleware(0, null), CreateAppBuilder(),
                 null);
 
-            a.ShouldThrow<ArgumentNullException>("options");
+            a.Should().Throw<ArgumentNullException>("options");
         }
 
         [TestMethod]
@@ -65,7 +65,7 @@ namespace Sustainsys.Saml2.Owin.Tests
             Action a = () => new Saml2AuthenticationMiddleware(
                 new StubOwinMiddleware(0, null), null, new Saml2AuthenticationOptions(true));
 
-            a.ShouldThrow<ArgumentNullException>("app");
+            a.Should().Throw<ArgumentNullException>("app");
         }
 
         const string DefaultSignInAsAuthenticationType = "MyDefaultSignInAsAuthTypeForTesting";
@@ -690,10 +690,9 @@ namespace Sustainsys.Saml2.Owin.Tests
         }
 
         [TestMethod]
-        public async Task Saml2AuthenticationMiddleware_UsesReturnUrl_WhenActive()
+        public async Task Saml2AuthenticationMiddleware_StoresCurrentUrlIfNoneInAuthProps()
         {
             var options = new Saml2AuthenticationOptions(true);
-            options.AuthenticationMode = AuthenticationMode.Active;
             var middleware = new Saml2AuthenticationMiddleware(
                 new StubOwinMiddleware(401,
                     new AuthenticationResponseChallenge(
@@ -709,24 +708,6 @@ namespace Sustainsys.Saml2.Owin.Tests
             await middleware.Invoke(context);
             var storedAuthnData = ExtractRequestState(options.DataProtector, context);
             storedAuthnData.ReturnUrl.Should().Be( "http://host3/path3?p1=value1" );
-        }
-
-        [TestMethod]
-        public async Task Saml2AuthenticationMiddleware_UsesChallenge_WhenPassive()
-        {
-            var options = new Saml2AuthenticationOptions(true);
-            options.AuthenticationMode = AuthenticationMode.Passive;
-            var middleware = new Saml2AuthenticationMiddleware(
-                new StubOwinMiddleware(401,
-                    new AuthenticationResponseChallenge(
-                        new string[] { "Saml2" }, new AuthenticationProperties() ) ),
-                CreateAppBuilder(),
-                options);
-
-            var context = OwinTestHelpers.CreateOwinContext();
-            await middleware.Invoke(context);
-            var storedAuthnData = ExtractRequestState(options.DataProtector, context);
-            storedAuthnData.ReturnUrl.Should().BeNull();
         }
 
         [TestMethod]
@@ -1113,11 +1094,8 @@ namespace Sustainsys.Saml2.Owin.Tests
             context.Request.Path = new PathString("/Saml2/Acs");
 
             var signInAsAuthenticationType = "AuthType";
-            var ids = new ClaimsIdentity[] { new ClaimsIdentity(signInAsAuthenticationType),
-                new ClaimsIdentity(signInAsAuthenticationType) };
+            var ids = new ClaimsIdentity[] { new ClaimsIdentity(signInAsAuthenticationType) };
             ids[0].AddClaim(new Claim(ClaimTypes.NameIdentifier, "SomeUser", null, "https://idp.example.com"));
-            ids[1].AddClaim(new Claim(ClaimTypes.Role, "RoleFromClaimsAuthManager", 
-                null, "ClaimsAuthenticationManagerStub"));
 
             var subject = new Saml2AuthenticationMiddleware(null, CreateAppBuilder(),
                 OwinStubFactory.CreateOwinOptions());
@@ -1129,7 +1107,7 @@ namespace Sustainsys.Saml2.Owin.Tests
             context.Response.Headers["Set-Cookie"].Should().Be($"{StoredRequestState.CookieNameBase}{relayState}=; path=/; expires=Thu, 01-Jan-1970 00:00:00 GMT");
 
             context.Authentication.AuthenticationResponseGrant.Principal.Identities
-                .ShouldBeEquivalentTo(ids, opt => opt.IgnoringCyclicReferences());
+                .Should().BeEquivalentTo(ids, opt => opt.IgnoringCyclicReferences());
 
             context.Authentication.AuthenticationResponseGrant.Properties.RedirectUri
                 .Should().Be("http://localhost/LoggedIn", 
@@ -1274,10 +1252,12 @@ namespace Sustainsys.Saml2.Owin.Tests
                 new Saml2AuthenticationOptions(true));
 
             await middleware.Invoke(context);
-            context.Response.Body.Seek(0, SeekOrigin.Begin);
 
             context.Response.ContentType.Should().Contain("application/samlmetadata+xml");
+            context.Response.Headers["Content-Disposition"].Should().Be(
+                "attachment; filename=\"github.com_Sustainsys_Saml2.xml\"");
 
+            context.Response.Body.Seek(0, SeekOrigin.Begin);
             var xmlData = XDocument.Load(context.Response.Body);
 
             xmlData.Document.Root.Name.Should().Be(Saml2Namespaces.Saml2Metadata + "EntityDescriptor");
@@ -1324,7 +1304,7 @@ namespace Sustainsys.Saml2.Owin.Tests
                     }
                 });
 
-            subject.Awaiting(async s => await s.Invoke(context)).ShouldNotThrow();
+            subject.Awaiting(async s => await s.Invoke(context)).Should().NotThrow();
         }
 
         [TestMethod]
@@ -1383,7 +1363,7 @@ namespace Sustainsys.Saml2.Owin.Tests
         }, "ApplicationIdentity");
 
             context.Authentication.AuthenticationResponseGrant.Identity
-                .ShouldBeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
+                .Should().BeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
         }
 
         [TestMethod]
@@ -1430,7 +1410,7 @@ namespace Sustainsys.Saml2.Owin.Tests
             }, "ApplicationIdentity");
 
             context.Authentication.AuthenticationResponseGrant.Identity
-                .ShouldBeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
+                .Should().BeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
         }
 
         [TestMethod]
@@ -1477,7 +1457,7 @@ namespace Sustainsys.Saml2.Owin.Tests
             }, "ApplicationIdentity");
 
             context.Authentication.AuthenticationResponseGrant.Identity
-                .ShouldBeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
+                .Should().BeEquivalentTo(expected, opt => opt.IgnoringCyclicReferences());
         }
 
         [TestMethod]
@@ -1495,7 +1475,7 @@ namespace Sustainsys.Saml2.Owin.Tests
                 CreateAppBuilder(),
                 options);
 
-            subject.Awaiting(async s => await s.Invoke(context)).ShouldThrow<InvalidOperationException>();
+            subject.Awaiting(async s => await s.Invoke(context)).Should().Throw<InvalidOperationException>();
             
             options.SPOptions.Logger.Received().WriteError(
                 "Error in Saml2 for /Saml2/SignIn", Arg.Any<Exception>());
@@ -1511,7 +1491,7 @@ namespace Sustainsys.Saml2.Owin.Tests
                 CreateAppBuilder(),
                 options);
 
-            a.ShouldThrow<ConfigurationErrorsException>()
+            a.Should().Throw<ConfigurationErrorsException>()
                 .WithMessage("The options.SPOptions property cannot be null. There is an implementation class Sustainsys.Saml2.Configuration.SPOptions that you can instantiate. The EntityId property of that class is mandatory. It must be set to the EntityId used to represent this system.");
         }
 
@@ -1528,7 +1508,7 @@ namespace Sustainsys.Saml2.Owin.Tests
                 CreateAppBuilder(),
                 options);
 
-            a.ShouldThrow<ConfigurationErrorsException>()
+            a.Should().Throw<ConfigurationErrorsException>()
                 .WithMessage("The SPOptions.EntityId property cannot be null. It must be set to the EntityId used to represent this system.");
 
         }

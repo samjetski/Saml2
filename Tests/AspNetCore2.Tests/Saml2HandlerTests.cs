@@ -3,6 +3,8 @@ using Sustainsys.Saml2;
 using Sustainsys.Saml2.Configuration;
 using Sustainsys.Saml2.Saml2P;
 using Sustainsys.Saml2.TestHelpers;
+using Sustainsys.Saml2.Metadata;
+using Sustainsys.Saml2.Tokens;
 using Sustainsys.Saml2.WebSso;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -10,12 +12,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using Microsoft.IdentityModel.Tokens.Saml2;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using System;
 using System.Collections.Generic;
-using System.IdentityModel.Metadata;
-using System.IdentityModel.Tokens;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -65,12 +66,21 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
                             opt.SPOptions)
                         {
                             SingleSignOnServiceUrl = new Uri("https://idp.example.com/sso"),
+                            Binding = Saml2BindingType.HttpRedirect,
+                        };
+
+                        var secondIdp = new IdentityProvider(
+                            new EntityId("https://idp2.example.com"),
+                            opt.SPOptions)
+                        {
+                            SingleSignOnServiceUrl = new Uri("https://idp2.example.com/sso"),
                             Binding = Saml2BindingType.HttpRedirect
                         };
 
                         idp.SigningKeys.AddConfiguredKey(SignedXmlHelper.TestCert);
-
+                        
                         opt.IdentityProviders.Add(idp);
+                        opt.IdentityProviders.Add(secondIdp);
 
                     }), 1),
                     Enumerable.Repeat<IPostConfigureOptions<Saml2Options>>(
@@ -108,6 +118,33 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
 
             // Don't dual-store the return-url.
             state.RelayData.Values.Should().NotContain("https://sp.example.com/LoggedIn");
+        }
+
+        [TestMethod]
+        public async Task Saml2Handler_ChallengeAsync_RedirectsToSelectedIdp()
+        {
+            var context = new Saml2HandlerTestContext();
+
+            var authProps = new AuthenticationProperties()
+            {
+                RedirectUri = "https://sp.example.com/LoggedIn"
+            };
+
+            authProps.Items["idp"] = "https://idp2.example.com";
+
+            var response = context.HttpContext.Response;
+
+            string cookieData = null;
+            response.Cookies.Append(
+                Arg.Any<string>(),
+                Arg.Do<string>(v => cookieData = v),
+                Arg.Any<CookieOptions>());
+
+            await context.Subject.ChallengeAsync(authProps);
+
+            response.StatusCode.Should().Be(303);
+            response.Headers["Location"].Single()
+                .Should().StartWith("https://idp2.example.com/sso?SAMLRequest=");
         }
 
         [TestMethod]
@@ -294,14 +331,13 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
         }
 
         [TestMethod]
-        public void Saml2Handler_ChallengeAsync_NullchecksProperties()
+        public void Saml2Handler_ChallengeAsync_NoExceptionWithNullProperties()
         {
             var context = new Saml2HandlerTestContext();
 
             Func<Task> f = async () => await context.Subject.ChallengeAsync(null);
 
-            f.ShouldThrow<ArgumentNullException>()
-                .And.ParamName.Should().Be("properties");
+            f.Should().NotThrow();
         }
 
         [TestMethod]
@@ -309,7 +345,7 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
         {
             Action a = () => new Saml2Handler(null, null, null);
 
-            a.ShouldThrow<ArgumentNullException>()
+            a.Should().Throw<ArgumentNullException>()
                 .And.ParamName.Should().Be("dataProtectorProvider");
         }
 
@@ -324,8 +360,12 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
 
             context.HttpContext.Response.StatusCode.Should().Be(200);
 
-            Encoding.UTF8.GetString(
-                context.HttpContext.Response.Body.As<MemoryStream>().GetBuffer())
+            context.HttpContext.Response.Headers.Received().Add(
+                "Content-Disposition",
+                "attachment; filename=\"sp.example.com_saml2.xml\"");
+
+			var ms = context.HttpContext.Response.Body.As<MemoryStream>();
+			Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length)
                 .Should().StartWith("<EntityDescriptor");
         }
 
@@ -395,7 +435,7 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
             
             Func<Task> f = async () => await context.Subject.SignOutAsync(null);
 
-            f.ShouldThrow<ArgumentNullException>().And.ParamName.Should().Be("properties");
+            f.Should().Throw<ArgumentNullException>().And.ParamName.Should().Be("properties");
         }
 
         [TestMethod]
@@ -425,7 +465,7 @@ namespace Sustainsys.Saml2.AspNetCore2.Tests
                 NameId = new Saml2NameIdentifier("NameId"),
                 Issuer = new EntityId("https://idp.example.com"),
                 SigningCertificate = SignedXmlHelper.TestCert,
-                SigningAlgorithm = SignedXml.XmlDsigRSASHA256Url
+                SigningAlgorithm = SecurityAlgorithms.RsaSha256Signature
             };
 
             var url = Saml2Binding.Get(Saml2BindingType.HttpRedirect)

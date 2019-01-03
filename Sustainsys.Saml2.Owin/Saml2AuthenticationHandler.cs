@@ -1,4 +1,5 @@
 ﻿using Sustainsys.Saml2.Configuration;
+using Sustainsys.Saml2.Metadata;
 using Sustainsys.Saml2.WebSso;
 using Microsoft.Owin;
 using Microsoft.Owin.Infrastructure;
@@ -6,7 +7,6 @@ using Microsoft.Owin.Security;
 using Microsoft.Owin.Security.Infrastructure;
 using System;
 using System.Collections.Generic;
-using System.IdentityModel.Metadata;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
@@ -122,7 +122,7 @@ namespace Sustainsys.Saml2.Owin
                     // Don't serialize the RedirectUri twice.
                     challenge.Properties.RedirectUri = null;
 
-                    if (redirectUri == null && Options.AuthenticationMode == AuthenticationMode.Active)
+                    if (redirectUri == null)
                     {
                         redirectUri = Context.Request.Uri.ToString();
                     }
